@@ -9,7 +9,7 @@
 </div>
 
 <hr>
-插件原作者 : DarkerZ 插件制作移植 : 晓琳吴迪
+插件原作者 : DarkerZ ; 插件制作移植 : 晓琳吴迪
 <hr>
 将 CS2-EntityFix 迁移到 SwiftlyS2 的完整版本，提供 game_player_equip、game_ui、IgniteLifeTime、point_viewcontrol、trigger_gravity 等修复能力。
 
