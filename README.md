@@ -1,4 +1,4 @@
-# CS2-EntityFix-SW2
+# CS2-EntityFix-SW2 - 原作者 By: DarkerZ 插件制作移植 By: 晓琳吴迪
 
 ---
 
