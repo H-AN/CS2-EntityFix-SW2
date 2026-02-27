@@ -88,27 +88,16 @@ css_entityfix_reload 1
 
 ```
 CS2-EntityFix-SW2/
-
-config.json
-
-resources/
-
-gamedata/
-
-signatures.jsonc
-
-offsets.jsonc
-
-src/
-
-EntityFix.cs
-
-Extensions.cs
-
-tools/
-
-CS2-ParseGravity/
-
+  config.json
+  resources/
+    gamedata/
+      signatures.jsonc
+      offsets.jsonc
+  src/
+    EntityFix.cs
+    Extensions.cs
+  tools/
+    CS2-ParseGravity/
 ```
 ## Tools
 
