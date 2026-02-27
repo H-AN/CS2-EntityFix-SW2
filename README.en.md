@@ -65,12 +65,9 @@ The generated gravity configuration file should be placed in:
 Example file structure:
 
 ```json
-
 {
-"100275": 0.2,
-
-"100276": 0.01
-
+  "100275": 0.2,
+  "100276": 0.01
 }
 ```
 
@@ -82,7 +79,6 @@ Console execution:
 
 ```
 css_entityfix_reload 1
-
 ```
 ## Directory Structure
 
