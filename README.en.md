@@ -58,8 +58,8 @@ File: `config.json`
 
 The generated gravity configuration file should be placed in:
 
-``` CS2-EntityFix-SW2/maps/<map name>.json
-
+```
+CS2-EntityFix-SW2/maps/<MapName>.json
 ```
 
 Example file structure:
