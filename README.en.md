@@ -14,87 +14,85 @@ Original author: DarkerZ; Plugin creation and porting: Xiaolin Wudi
 
 Migrate CS2-EntityFix to the full version of SwiftlyS2, providing fixes for game_player_equip, game_ui, IgniteLifeTime, point_viewcontrol, trigger_gravity, and more.
 
-## Features
+## Migrated Features
 
-- game_player_equip: Supports Use, TriggerForActivatedPlayer, TriggerForAllPlayers
+- `game_player_equip` Fixes: `StripFirst` + `TriggerForActivatedPlayer` + `TriggerForAllPlayers`
 
-- game_ui: Supports Activate/Deactivate and button-triggered input
+- `game_ui` Fixes:
 
-- IgniteLifeTime: Configurable particles, duration, and damage
+- Handling `Activate/Deactivate`
 
-- point_viewcontrol: Supports Enable/Disable/All and freeze, FOV, and disarm behaviors
+- Forward button input is now `InValue` (`Pressed*` / `Unpressed*`)
 
-- trigger_gravity: Supports gravity values ​​configured by HammerID and EndTouch restoration
+- `point_viewcontrol` Fixes:
 
-- TestActivator empty activation fix
+- `EnableCamera/DisableCamera`
 
-## Dependencies
+- `EnableCameraAll/DisableCameraAll`
 
-- SwiftlyS2 (Recommended version: 1.1.5 or higher)
+- Handling FOV / Freeze / Disarm flags
 
-## Installation
+- `IgniteLifeTime`: Inputting `ignitelifetime` now supports continuous damage and slowing
 
-1. Compile and copy the plugin output directory to `addons/swiftly/plugins/CS2-EntityFix-SW2/`
+- `trigger_gravity`: Apply gravity and restore default gravity on StartTouch/EndTouch
 
-2. Copy the `resources` directory to the same plugin directory
+- Map gravity configuration: `resources/maps/<mapname>.json`
 
-3. Place `config.json` in the plugin directory
+## Project Structure
 
-4. When gravity fix is ​​needed, generate and place the map configuration as described below
+- `CS2-EntityFix-SW2.csproj`
 
-## Configuration Instructions
+- `src/EntityFixSw2.cs`
 
-File: `config.json`
+- `resources/config/config.json`
 
-- Ignite_Velocity: Speed ​​multiplier during burning, recommended range 0.001 - 1.0
+- `resources/maps/README.md`
 
-- Ignite_Repeat: Burning detection interval (seconds), recommended range 0.1 - 1.0
+- `resources/gamedata/README.md`
 
-- Ignite_Damage: Damage per detection
+## Configuration
 
-- Ignite_Particle: Burning particle path
-
-## Gravity Configuration
-
-The generated gravity configuration file should be placed in:
-
-```
-CS2-EntityFix-SW2/maps/<MapName>.json
-```
-
-Example file structure:
+File: `resources/config/config.json`
 
 ```json
+
 {
-  "100275": 0.2,
-  "100276": 0.01
+"IgniteVelocity": 0.45,
+
+"IgniteRepeat": 0.5,
+
+"IgniteDamage": 1,
+
+"IgniteParticle": "particles/burning_fx/env_fire_small.vpcf"
+
 }
 ```
 
-Requires the HammerID fix plugin to ensure the trigger's UniqueHammerID is correct.
+## Map Gravity Overlay
 
-## Reload Configuration
+Place `<map>.json` (e.g., `de_dust2.json`) in `resources/maps`:
 
-Console execution:
+```json
+
+{
+"123456": 0.2,
+
+"654321": 0.5
+
+}
+```
+
+- Key: `Trigger_gravity`'s `UniqueHammerID`
+
+- Value: The percentage of gravity applied when touching this entity
+
+## Dependencies
+
+- SwiftlyS2 (`SwiftlyS2.CS2`)
+
+## Build
+
+```bash
+dotnet build CS2-EntityFix-SW2.csproj -c Release
 
 ```
-css_entityfix_reload 1
-```
-## Directory Structure
-
-```
-CS2-EntityFix-SW2/
-  config.json
-  resources/
-    gamedata/
-      signatures.jsonc
-      offsets.jsonc
-  src/
-    EntityFix.cs
-    Extensions.cs
-  tools/
-    CS2-ParseGravity/
-```
-## Tools
-
-`tools/CS2-ParseGravity` is used to generate the HammerID gravity configuration for trigger_gravity.

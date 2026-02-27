@@ -13,78 +13,61 @@
 <hr>
 将 CS2-EntityFix 迁移到 SwiftlyS2 的完整版本，提供 game_player_equip、game_ui、IgniteLifeTime、point_viewcontrol、trigger_gravity 等修复能力。
 
-## 功能
+## 已迁移功能
 
-- game_player_equip：支持 Use、TriggerForActivatedPlayer、TriggerForAllPlayers
-- game_ui：支持 Activate/Deactivate 与按钮触发输入
-- IgniteLifeTime：可配置粒子、持续时间与伤害
-- point_viewcontrol：支持 Enable/Disable/All 与冻结、FOV、缴械行为
-- trigger_gravity：支持 HammerID 配置的重力值与 EndTouch 恢复
-- TestActivator 空激活修复
+- `game_player_equip` 修复：`StripFirst` + `TriggerForActivatedPlayer` + `TriggerForAllPlayers`
+- `game_ui` 修复：
+  - 处理 `Activate/Deactivate`
+  - 转发按键输入为 `InValue`（`Pressed*` / `Unpressed*`）
+- `point_viewcontrol` 修复：
+  - `EnableCamera/DisableCamera`
+  - `EnableCameraAll/DisableCameraAll`
+  - 处理 FOV / Freeze / Disarm 标志位
+- `IgniteLifeTime`：输入 `ignitelifetime` 支持持续伤害与减速
+- `trigger_gravity`：StartTouch/EndTouch 应用重力并恢复默认重力
+- 地图重力配置：`resources/maps/<mapname>.json`
 
-## 依赖
+## 项目结构
 
-- SwiftlyS2（建议不低于 1.1.5）
+- `CS2-EntityFix-SW2.csproj`
+- `src/EntityFixSw2.cs`
+- `resources/config/config.json`
+- `resources/maps/README.md`
+- `resources/gamedata/README.md`
 
-## 安装
+## 配置
 
-1. 编译并将插件输出目录复制到 `addons/swiftly/plugins/CS2-EntityFix-SW2/`
-2. 将 `resources` 目录复制到同一插件目录
-3. 将 `config.json` 放到插件目录
-4. 需要重力修复时，按下面说明生成并放置地图配置
-
-## 配置说明
-
-文件：`config.json`
-
-- Ignite_Velocity：燃烧时速度倍率，范围建议 0.001 - 1.0
-- Ignite_Repeat：燃烧判定间隔（秒），建议 0.1 - 1.0
-- Ignite_Damage：每次判定伤害
-- Ignite_Particle：燃烧粒子路径
-
-## 重力配置
-
-生成的重力配置文件需放置在：
-
-```
-CS2-EntityFix-SW2/maps/<地图名>.json
-```
-
-文件结构示例：
+文件：`resources/config/config.json`
 
 ```json
 {
-  "100275": 0.2,
-  "100276": 0.01
+  "IgniteVelocity": 0.45,
+  "IgniteRepeat": 0.5,
+  "IgniteDamage": 1,
+  "IgniteParticle": "particles/burning_fx/env_fire_small.vpcf"
 }
 ```
 
-需要配合 HammerID 修复插件才能保证触发器的 UniqueHammerID 正常。
+## 地图重力覆盖
 
-## 重载配置
+在 `resources/maps` 放置 `<map>.json`（例如 `de_dust2.json`）：
 
-控制台执行：
-
-```
-css_entityfix_reload 1
-```
-
-## 目录结构
-
-```
-CS2-EntityFix-SW2/
-  config.json
-  resources/
-    gamedata/
-      signatures.jsonc
-      offsets.jsonc
-  src/
-    EntityFix.cs
-    Extensions.cs
-  tools/
-    CS2-ParseGravity/
+```json
+{
+  "123456": 0.2,
+  "654321": 0.5
+}
 ```
 
-## 工具
+- Key：`trigger_gravity` 的 `UniqueHammerID`
+- Value：接触该实体时应用的重力比例
 
-`tools/CS2-ParseGravity` 用于生成 trigger_gravity 的 HammerID 重力配置。
+## 依赖
+
+- SwiftlyS2 (`SwiftlyS2.CS2`)
+
+## 构建
+
+```bash
+dotnet build CS2-EntityFix-SW2.csproj -c Release
+```
