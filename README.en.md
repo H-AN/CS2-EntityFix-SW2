@@ -9,6 +9,8 @@
 </div>
 
 <hr>
+Original author: DarkerZ; Plugin creation and porting: Xiaolin Wudi
+<hr>
 
 Migrate CS2-EntityFix to the full version of SwiftlyS2, providing fixes for game_player_equip, game_ui, IgniteLifeTime, point_viewcontrol, trigger_gravity, and more.
 
