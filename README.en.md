@@ -1,5 +1,15 @@
 # CS2-EntityFix-SW2
 
+---
+
+<div align="center">
+  <a href="./README.en.md"><img src="https://flagcdn.com/48x36/gb.png" alt="English" width="48" height="36" /> <strong>English</strong></a>  
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="./README.md"><img src="https://flagcdn.com/48x36/cn.png" alt="中文" width="48" height="36" /> <strong>中文版</strong></a>
+</div>
+
+<hr>
+
 Migrate CS2-EntityFix to the full version of SwiftlyS2, providing fixes for game_player_equip, game_ui, IgniteLifeTime, point_viewcontrol, trigger_gravity, and more.
 
 ## Features
