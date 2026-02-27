@@ -41,13 +41,9 @@ Migrate CS2-EntityFix to the full version of SwiftlyS2, providing fixes for game
 ## Project Structure
 
 - `CS2-EntityFix-SW2.csproj`
-
 - `src/EntityFixSw2.cs`
-
 - `resources/config/config.json`
-
 - `resources/maps/README.md`
-
 - `resources/gamedata/README.md`
 
 ## Configuration
@@ -55,16 +51,11 @@ Migrate CS2-EntityFix to the full version of SwiftlyS2, providing fixes for game
 File: `resources/config/config.json`
 
 ```json
-
 {
-"IgniteVelocity": 0.45,
-
-"IgniteRepeat": 0.5,
-
-"IgniteDamage": 1,
-
-"IgniteParticle": "particles/burning_fx/env_fire_small.vpcf"
-
+  "IgniteVelocity": 0.45,
+  "IgniteRepeat": 0.5,
+  "IgniteDamage": 1,
+  "IgniteParticle": "particles/burning_fx/env_fire_small.vpcf"
 }
 ```
 
@@ -73,12 +64,9 @@ File: `resources/config/config.json`
 Place `<map>.json` (e.g., `de_dust2.json`) in `resources/maps`:
 
 ```json
-
 {
-"123456": 0.2,
-
-"654321": 0.5
-
+  "123456": 0.2,
+  "654321": 0.5
 }
 ```
 
