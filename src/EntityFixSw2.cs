@@ -14,7 +14,7 @@ namespace CS2_EntityFix_SW2;
 [PluginMetadata(
     Id = "CS2-EntityFix-SW2",
     Name = "Entity Fix SW2",
-    Author = "DarkerZ [RUS]",
+    Author = "DarkerZ [RUS] & XiaoLinWuDi",
     Version = "1.0.0",
     Description = "Fixes game_player_equip, game_ui, point_viewcontrol, IgniteLifeTime and trigger_gravity",
     Website = "https://github.com/swiftly-solution/swiftlys2")]
