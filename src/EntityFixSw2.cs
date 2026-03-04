@@ -34,6 +34,9 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
     private readonly ConcurrentDictionary<int, IgniteState> _igniteStates = [];
     private Dictionary<string, float>? _mapGravity;
 
+    private CancellationTokenSource? _igniteTimer;
+    private CancellationTokenSource? _viewControlTimer;
+
     private ConfigModel _config = new();
     private string _igniteParticle = DefaultIgniteParticle;
     private float _igniteVelocity = DefaultIgniteVelocity;
@@ -52,9 +55,9 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
         Core.Event.OnClientKeyStateChanged += OnClientKeyStateChanged;
         Core.Event.OnClientDisconnected += OnClientDisconnected;
         Core.Event.OnMapLoad += OnMapLoad;
-        Core.Event.OnTick += OnTick;
 
         ResetRuntime();
+        StartTimers();
     }
 
     public override void Unload()
@@ -67,14 +70,15 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
         Core.Event.OnClientKeyStateChanged -= OnClientKeyStateChanged;
         Core.Event.OnClientDisconnected -= OnClientDisconnected;
         Core.Event.OnMapLoad -= OnMapLoad;
-        Core.Event.OnTick -= OnTick;
 
+        StopTimers();
         ResetRuntime();
     }
 
     private void OnMapLoad(IOnMapLoadEvent @event)
     {
         ResetRuntime();
+        RestartTimers();
         LoadMapGravity(@event.MapName);
     }
 
@@ -94,61 +98,82 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
 
         if (IsPointViewControl(entity))
         {
-            _viewControls.Add(new ViewControlState(entity.As<CLogicRelay>()));
+            var relay = entity.As<CLogicRelay>();
+            var vcState = new ViewControlState(relay);
+            try
+            {
+                if (relay.IsValid && relay.IsValidEntity)
+                    vcState.CachedTargetName = relay.Target;
+            }
+            catch { }
+            _viewControls.Add(vcState);
         }
     }
 
     private void OnEntityDeleted(IOnEntityDeletedEvent @event)
     {
-        var entity = @event.Entity;
-        if (entity == null)
+        try
         {
-            return;
-        }
-
-        if (IsGameUi(entity))
-        {
-            var logicCase = entity.As<CLogicCase>();
-            foreach (var state in _gameUiStates.Where(x => x.Entity == logicCase).ToList())
+            var entity = @event.Entity;
+            if (entity == null)
             {
-                if (state.Activator != null)
+                return;
+            }
+
+            if (IsGameUi(entity))
+            {
+                var logicCase = entity.As<CLogicCase>();
+                foreach (var state in _gameUiStates.Where(x => x.Entity == logicCase).ToList())
                 {
-                    SafeAcceptInput(state.Entity, "Deactivate", state.Activator, state.Entity, null);
+                    try
+                    {
+                        if (state.Activator != null && state.Activator.IsValid && state.Activator.IsValidEntity
+                            && state.Entity != null && state.Entity.IsValid && state.Entity.IsValidEntity)
+                        {
+                            SafeAcceptInput(state.Entity, "Deactivate", state.Activator, state.Entity, null);
+                        }
+                    }
+                    catch { }
+
+                    _gameUiStates.Remove(state);
                 }
 
-                _gameUiStates.Remove(state);
+                return;
             }
 
-            return;
-        }
-
-        if (IsPointViewControl(entity))
-        {
-            var relay = entity.As<CLogicRelay>();
-            foreach (var state in _viewControls.Where(x => x.Entity == relay).ToList())
+            if (IsPointViewControl(entity))
             {
-                DisableCameraAll(state);
-                _viewControls.Remove(state);
+                var relay = entity.As<CLogicRelay>();
+                foreach (var state in _viewControls.Where(x => x.Entity == relay).ToList())
+                {
+                    try { DisableCameraAll(state); } catch { }
+                    _viewControls.Remove(state);
+                }
+
+                return;
             }
 
-            return;
-        }
-
-        foreach (var viewControl in _viewControls)
-        {
-            if (viewControl.Target != null && viewControl.Target == entity)
+            foreach (var viewControl in _viewControls.ToList())
             {
-                DisableCameraAll(viewControl);
-                viewControl.Target = null;
+                try
+                {
+                    if (viewControl.Target != null && viewControl.Target == entity)
+                    {
+                        DisableCameraAll(viewControl);
+                        viewControl.Target = null;
+                    }
+                }
+                catch { }
             }
         }
+        catch { }
     }
 
     private void OnEntityStartTouch(IOnEntityStartTouchEvent @event)
     {
         var trigger = @event.Entity;
         var other = @event.OtherEntity;
-        if (trigger == null || other == null || !trigger.IsValid  || !trigger.IsValidEntity || !other.IsValid || !other.IsValidEntity)
+        if (trigger == null || other == null || !trigger.IsValid || !trigger.IsValidEntity || !other.IsValid || !other.IsValidEntity)
         {
             return;
         }
@@ -177,7 +202,7 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
     {
         var trigger = @event.Entity;
         var other = @event.OtherEntity;
-        if (trigger == null || other == null || !trigger.IsValid  || !trigger.IsValidEntity || !other.IsValid || !other.IsValidEntity)
+        if (trigger == null || other == null || !trigger.IsValid || !trigger.IsValidEntity || !other.IsValid || !other.IsValidEntity)
         {
             return;
         }
@@ -203,165 +228,242 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
 
     private void OnClientKeyStateChanged(IOnClientKeyStateChangedEvent @event)
     {
-        var player = Core.PlayerManager.GetPlayer(@event.PlayerId);
-        if (player == null || !player.IsValid)
+        try
         {
-            return;
+            var player = Core.PlayerManager.GetPlayer(@event.PlayerId);
+            if (player == null || !player.IsValid)
+            {
+                return;
+            }
+
+            var inputName = ConvertKeyToGameUiInput(@event.Key, @event.Pressed);
+            if (string.IsNullOrEmpty(inputName))
+            {
+                return;
+            }
+
+            foreach (var state in _gameUiStates.ToList())
+            {
+                try
+                {
+                    if (state.Entity == null || !state.Entity.IsValid || !state.Entity.IsValidEntity)
+                    {
+                        continue;
+                    }
+
+                    if (state.Activator == null || !state.Activator.IsValid || !state.Activator.IsValidEntity)
+                    {
+                        continue;
+                    }
+
+                    var activatorPlayer = ResolvePlayer(state.Activator);
+                    if (activatorPlayer == null || !activatorPlayer.IsValid || activatorPlayer.PlayerID != player.PlayerID)
+                    {
+                        continue;
+                    }
+
+                    if ((state.Entity.Spawnflags & 256) != 0 && @event.Pressed && IsJumpKey(@event.Key))
+                    {
+                        SafeAcceptInput(state.Entity, "Deactivate", state.Activator, state.Entity, null);
+                        continue;
+                    }
+
+                    SafeAcceptInput(state.Entity, "InValue", state.Activator, state.Entity, inputName);
+                }
+                catch
+                {
+                    // Entity memory freed during round restart, skip
+                }
+            }
         }
-
-        var inputName = ConvertKeyToGameUiInput(@event.Key, @event.Pressed);
-        if (string.IsNullOrEmpty(inputName))
+        catch
         {
-            return;
-        }
-
-        foreach (var state in _gameUiStates)
-        {
-            if (state.Activator == null || !state.Activator.IsValid || !state.Activator.IsValidEntity)
-            {
-                continue;
-            }
-
-            var activatorPlayer = ResolvePlayer(state.Activator);
-            if (activatorPlayer == null || !activatorPlayer.IsValid  || activatorPlayer.PlayerID != player.PlayerID)
-            {
-                continue;
-            }
-
-            if ((state.Entity.Spawnflags & 256) != 0 && @event.Pressed && IsJumpKey(@event.Key))
-            {
-                SafeAcceptInput(state.Entity, "Deactivate", state.Activator, state.Entity, null);
-                continue;
-            }
-
-            SafeAcceptInput(state.Entity, "InValue", state.Activator, state.Entity, inputName);
+            // Protect against any unhandled native memory access
         }
     }
 
     private void OnClientDisconnected(IOnClientDisconnectedEvent @event)
     {
-        var player = Core.PlayerManager.GetPlayer(@event.PlayerId);
-        if (player == null || !player.IsValid)
+        try
         {
-            return;
-        }
-
-        foreach (var state in _gameUiStates)
-        {
-            if (state.Activator == null || !state.Activator.IsValid || !state.Activator.IsValidEntity)
+            var player = Core.PlayerManager.GetPlayer(@event.PlayerId);
+            if (player == null || !player.IsValid)
             {
-                continue;
+                return;
             }
 
-            var activatorPlayer = ResolvePlayer(state.Activator);
-            if (activatorPlayer != null && activatorPlayer.PlayerID == player.PlayerID)
+            foreach (var state in _gameUiStates.ToList())
             {
-                SafeAcceptInput(state.Entity, "Deactivate", state.Activator, state.Entity, null);
+                try
+                {
+                    if (state.Entity == null || !state.Entity.IsValid || !state.Entity.IsValidEntity)
+                    {
+                        continue;
+                    }
+
+                    if (state.Activator == null || !state.Activator.IsValid || !state.Activator.IsValidEntity)
+                    {
+                        continue;
+                    }
+
+                    var activatorPlayer = ResolvePlayer(state.Activator);
+                    if (activatorPlayer != null && activatorPlayer.PlayerID == player.PlayerID)
+                    {
+                        SafeAcceptInput(state.Entity, "Deactivate", state.Activator, state.Entity, null);
+                    }
+                }
+                catch { }
             }
-        }
 
-        foreach (var vc in _viewControls)
-        {
-            vc.ActivePlayerIds.Remove(player.PlayerID);
-        }
+            foreach (var vc in _viewControls)
+            {
+                vc.ActivePlayerIds.Remove(player.PlayerID);
+            }
 
-        _igniteStates.TryRemove(player.PlayerID, out _);
+            _igniteStates.TryRemove(player.PlayerID, out _);
+        }
+        catch { }
     }
 
-    private void OnTick()
+    private void StartTimers()
     {
+        StopTimers();
+        _igniteTimer = Core.Scheduler.RepeatBySeconds(_igniteRepeat, ProcessIgniteStates);
+        _viewControlTimer = Core.Scheduler.RepeatBySeconds(0.25f, ProcessViewControls);
+    }
+
+    private void StopTimers()
+    {
+        _igniteTimer?.Cancel();
+        _igniteTimer = null;
+        _viewControlTimer?.Cancel();
+        _viewControlTimer = null;
+    }
+
+    private void ProcessIgniteStates()
+    {
+        if (_igniteStates.IsEmpty) return;
+
         var now = DateTime.UtcNow;
 
         foreach (var state in _igniteStates.Values.ToList())
         {
-            if (state.Player == null || !state.Player.IsValid || state.Player.PlayerPawn == null || !state.Player.PlayerPawn.IsValid || !state.Player.PlayerPawn.IsValidEntity)
+            try
             {
-                _igniteStates.TryRemove(state.PlayerId, out _);
-                continue;
-            }
-
-            if (now >= state.EndAt)
-            {
-                state.Player.PlayerPawn.VelocityModifier = 1.0f;
-                _igniteStates.TryRemove(state.PlayerId, out _);
-                continue;
-            }
-
-            if (now < state.NextTickAt)
-            {
-                continue;
-            }
-
-            state.NextTickAt = now.AddSeconds(_igniteRepeat);
-            var pawn = state.Player.PlayerPawn;
-            pawn.VelocityModifier *= _igniteVelocity;
-            pawn.VelocityModifierUpdated();
-            pawn.Health -= _igniteDamage;
-            pawn.HealthUpdated();
-            if (pawn.Health <= 0)
-            {
-                pawn.CommitSuicide(true, true);
-            }
-        }
-
-        foreach (var viewControl in _viewControls)
-        {
-            var target = ResolveOrRefreshTarget(viewControl);
-            if (target == null || !target.IsValid || !target.IsValidEntity)
-            {
-                continue;
-            }
-
-            foreach (var playerId in viewControl.ActivePlayerIds.ToList())
-            {
-                var player = Core.PlayerManager.GetPlayer(playerId);
-                if (player == null || !player.IsValid)
+                if (state.Player == null || !state.Player.IsValid || state.Player.PlayerPawn == null || !state.Player.PlayerPawn.IsValid || !state.Player.PlayerPawn.IsValidEntity)
                 {
-                    viewControl.ActivePlayerIds.Remove(playerId);
+                    _igniteStates.TryRemove(state.PlayerId, out _);
                     continue;
                 }
 
-                UpdateViewControlPlayerState(viewControl, player, true);
+                if (now >= state.EndAt)
+                {
+                    state.Player.PlayerPawn.VelocityModifier = 1.0f;
+                    _igniteStates.TryRemove(state.PlayerId, out _);
+                    continue;
+                }
+
+                if (now < state.NextTickAt)
+                {
+                    continue;
+                }
+
+                state.NextTickAt = now.AddSeconds(_igniteRepeat);
+                var pawn = state.Player.PlayerPawn;
+                pawn.VelocityModifier *= _igniteVelocity;
+                pawn.VelocityModifierUpdated();
+                pawn.Health -= _igniteDamage;
+                pawn.HealthUpdated();
+                if (pawn.Health <= 0)
+                {
+                    pawn.CommitSuicide(true, true);
+                }
+            }
+            catch
+            {
+                _igniteStates.TryRemove(state.PlayerId, out _);
+            }
+        }
+    }
+
+    private void ProcessViewControls()
+    {
+        if (_viewControls.Count == 0) return;
+
+        foreach (var viewControl in _viewControls)
+        {
+            if (viewControl.ActivePlayerIds.Count == 0) continue;
+
+            try
+            {
+                var target = ResolveOrRefreshTarget(viewControl);
+                if (target == null || !target.IsValid || !target.IsValidEntity)
+                {
+                    continue;
+                }
+
+                foreach (var playerId in viewControl.ActivePlayerIds.ToList())
+                {
+                    var player = Core.PlayerManager.GetPlayer(playerId);
+                    if (player == null || !player.IsValid)
+                    {
+                        viewControl.ActivePlayerIds.Remove(playerId);
+                        continue;
+                    }
+
+                    UpdateViewControlPlayerState(viewControl, player, true);
+                }
+            }
+            catch
+            {
+                // Skip this view control if any native access fails
             }
         }
     }
 
     private void OnEntityIdentityAcceptInputHook(IOnEntityIdentityAcceptInputHookEvent @event)
     {
-        var input = @event.InputName;
-        if (string.IsNullOrWhiteSpace(input) || @event.EntityInstance == null || !@event.EntityInstance.IsValid || !@event.EntityInstance.IsValidEntity)
+        try
         {
-            return;
-        }
-
-        var entity = @event.EntityInstance;
-        var valueText = TryToString(@event.VariantValue);
-
-        if (input.StartsWith("ignitel", StringComparison.OrdinalIgnoreCase))
-        {
-            if (float.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture, out var duration))
+            var input = @event.InputName;
+            if (string.IsNullOrWhiteSpace(input) || @event.EntityInstance == null || !@event.EntityInstance.IsValid || !@event.EntityInstance.IsValidEntity)
             {
-                StartIgnite(@event.Activator, duration);
+                return;
             }
 
-            return;
-        }
+            var entity = @event.EntityInstance;
+            var valueText = TryToString(@event.VariantValue);
 
-        if (string.Equals(entity.DesignerName, "game_player_equip", StringComparison.OrdinalIgnoreCase))
-        {
-            HandleGamePlayerEquipInput(entity.As<CGamePlayerEquip>(), input, valueText, @event.Activator);
-            return;
-        }
+            if (input.StartsWith("ignitel", StringComparison.OrdinalIgnoreCase))
+            {
+                if (float.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture, out var duration))
+                {
+                    StartIgnite(@event.Activator, duration);
+                }
 
-        if (IsGameUi(entity))
-        {
-            HandleGameUiInput(entity.As<CLogicCase>(), input, @event.Activator);
-            return;
-        }
+                return;
+            }
 
-        if (IsPointViewControl(entity))
+            if (string.Equals(entity.DesignerName, "game_player_equip", StringComparison.OrdinalIgnoreCase))
+            {
+                HandleGamePlayerEquipInput(entity.As<CGamePlayerEquip>(), input, valueText, @event.Activator);
+                return;
+            }
+
+            if (IsGameUi(entity))
+            {
+                HandleGameUiInput(entity.As<CLogicCase>(), input, @event.Activator);
+                return;
+            }
+
+            if (IsPointViewControl(entity))
+            {
+                HandlePointViewControlInput(entity.As<CLogicRelay>(), input, @event.Activator);
+            }
+        }
+        catch
         {
-            HandlePointViewControlInput(entity.As<CLogicRelay>(), input, @event.Activator);
+            // Protect against freed native memory during round transitions
         }
     }
 
@@ -552,7 +654,7 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
                 return;
             }
 
-            particle.EffectName = _igniteParticle;
+            particle.EffectName = "particles\\zero\\daoju\\burn\\burn_main.vpcf";
             particle.StartActive = true;
             particle.Teleport(pawn.AbsOrigin, pawn.AbsRotation, pawn.AbsVelocity);
             particle.DispatchSpawn();
@@ -571,55 +673,68 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
 
     private void UpdateViewControlPlayerState(ViewControlState state, IPlayer player, bool enable)
     {
-        var target = ResolveOrRefreshTarget(state);
-        if (target == null || !target.IsValid || !target.IsValidEntity)
+        try
         {
-            return;
-        }
+            if (state.Entity == null || !state.Entity.IsValid || !state.Entity.IsValidEntity)
+            {
+                return;
+            }
 
-        if (player.Controller == null || !player.Controller.IsValid || player.PlayerPawn == null || !player.PlayerPawn.IsValid || !player.Controller.IsValidEntity)
-        {
-            return;
-        }
+            var target = ResolveOrRefreshTarget(state);
+            if (target == null || !target.IsValid || !target.IsValidEntity)
+            {
+                return;
+            }
 
-        var pawn = player.PlayerPawn;
-        if (pawn.CameraServices == null)
-        {
-            return;
-        }
+            if (player.Controller == null || !player.Controller.IsValid || player.PlayerPawn == null || !player.PlayerPawn.IsValid || !player.Controller.IsValidEntity)
+            {
+                return;
+            }
 
-        if (enable)
-        {
-            pawn.CameraServices.ViewEntity.Raw = target.Entity!.EntityHandle.Raw;
-        }
-        else
-        {
-            pawn.CameraServices.ViewEntity.Raw = uint.MaxValue;
-        }
+            var pawn = player.PlayerPawn;
+            if (pawn.CameraServices == null)
+            {
+                return;
+            }
 
-        if ((state.Entity.Spawnflags & 64) != 0)
-        {
-            player.Controller.DesiredFOV = enable && state.Entity.Health is >= 16 and <= 179
-                ? (uint)state.Entity.Health
-                : 90;
-            player.Controller.DesiredFOVUpdated();
-        }
-
-        if ((state.Entity.Spawnflags & 32) != 0)
-        {
             if (enable)
             {
-                pawn.Flags |= FlagFrozen;
+                if (target.Entity == null || target.Entity.EntityHandle == null) return;
+                pawn.CameraServices.ViewEntity.Raw = target.Entity.EntityHandle.Raw;
             }
             else
             {
-                pawn.Flags &= ~FlagFrozen;
+                pawn.CameraServices.ViewEntity.Raw = uint.MaxValue;
+            }
+
+            if ((state.Entity.Spawnflags & 64) != 0)
+            {
+                player.Controller.DesiredFOV = enable && state.Entity.Health is >= 16 and <= 179
+                    ? (uint)state.Entity.Health
+                    : 90;
+                player.Controller.DesiredFOVUpdated();
+            }
+
+            if ((state.Entity.Spawnflags & 32) != 0)
+            {
+                if (enable)
+                {
+                    pawn.Flags |= FlagFrozen;
+                }
+                else
+                {
+                    pawn.Flags &= ~FlagFrozen;
+                }
+            }
+
+            if ((state.Entity.Spawnflags & 128) != 0 && enable)
+            {
+                pawn.WeaponServices?.ActiveWeapon.Value?.AcceptInput("Disable", string.Empty, null, null);
             }
         }
-
-        if ((state.Entity.Spawnflags & 128) != 0 && enable)
+        catch
         {
-            pawn.WeaponServices?.ActiveWeapon.Value?.AcceptInput("Disable", string.Empty, null, null);
+            // Native memory may be freed during round restart
         }
     }
 
@@ -627,11 +742,15 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
     {
         foreach (var playerId in state.ActivePlayerIds.ToList())
         {
-            var player = Core.PlayerManager.GetPlayer(playerId);
-            if (player != null && player.IsValid)
+            try
             {
-                UpdateViewControlPlayerState(state, player, false);
+                var player = Core.PlayerManager.GetPlayer(playerId);
+                if (player != null && player.IsValid)
+                {
+                    UpdateViewControlPlayerState(state, player, false);
+                }
             }
+            catch { }
         }
 
         state.ActivePlayerIds.Clear();
@@ -644,7 +763,28 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
             return state.Target;
         }
 
-        if (string.IsNullOrWhiteSpace(state.Entity.Target))
+        state.Target = null;
+
+        // Use cached target name to avoid accessing potentially freed native memory
+        var targetName = state.CachedTargetName;
+        if (string.IsNullOrWhiteSpace(targetName))
+        {
+            try
+            {
+                if (!state.Entity.IsValid || !state.Entity.IsValidEntity)
+                    return null;
+
+                targetName = state.Entity.Target;
+                if (!string.IsNullOrWhiteSpace(targetName))
+                    state.CachedTargetName = targetName;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(targetName))
         {
             return null;
         }
@@ -653,7 +793,7 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
             entity.IsValid &&
             entity.IsValidEntity &&
             entity.Entity != null &&
-            string.Equals(entity.Entity.Name, state.Entity.Target, StringComparison.Ordinal));
+            string.Equals(entity.Entity.Name, targetName, StringComparison.Ordinal));
 
         return state.Target;
     }
@@ -682,7 +822,7 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
 
     private IPlayer? ResolvePlayer(CEntityInstance? entity)
     {
-        if (entity == null || !entity.IsValid  || !entity.IsValidEntity || !string.Equals(entity.DesignerName, "player", StringComparison.OrdinalIgnoreCase))
+        if (entity == null || !entity.IsValid || !entity.IsValidEntity || !string.Equals(entity.DesignerName, "player", StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
@@ -837,6 +977,11 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
         _igniteStates.Clear();
     }
 
+    private void RestartTimers()
+    {
+        StartTimers();
+    }
+
     private sealed class GameUiState(CLogicCase entity)
     {
         public CLogicCase Entity { get; } = entity;
@@ -847,6 +992,7 @@ public sealed class EntityFixSw2(ISwiftlyCore core) : BasePlugin(core)
     {
         public CLogicRelay Entity { get; } = entity;
         public CEntityInstance? Target { get; set; }
+        public string? CachedTargetName { get; set; }
         public HashSet<int> ActivePlayerIds { get; } = [];
     }
 
